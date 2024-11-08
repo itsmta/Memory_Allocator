@@ -8,7 +8,7 @@
 
 static void* memory_region = NULL;    //Base pointer for memory region
 static size_t total_memory = 0;       //Total size of the memory region
-static int alloc_algorithm = FIRST_FIT;  //Default allocation algorithm (can be changed)
+static int alloc_algorithm = FIRST_FIT;  //Default allocation algorithm
 
 static size_t allocated_memory = 0;   //Track allocated memory
 static size_t free_memory = 0;        //Track free memory
@@ -19,18 +19,23 @@ static node_t* last_allocated = NULL; //Keeps track of last allocated's next nod
 
 //Function declarations
 void coalesce(node_t* new_free_node);
-node_t* first_fit(size_t allocation_size, node_t* *selected_prev);
-node_t* best_fit(size_t allocation_size, node_t* *selected_prev);
-node_t* worst_fit(size_t allocation_size, node_t* *selected_prev);
-node_t* next_fit(size_t allocation_size, node_t* *selected_prev);
+node_t* first_fit(size_t allocation_size, node_t** selected_prev);
+node_t* best_fit(size_t allocation_size, node_t** selected_prev);
+node_t* worst_fit(size_t allocation_size, node_t** selected_prev);
+node_t* next_fit(size_t allocation_size, node_t** selected_prev);
+double calculate_fragmentation(void);
+
+//Debugger function
 void print_free_list();
-//void log_memory_operation(const char* operation, void* address, size_t size); //For my image maker
+
+//For my image maker
+//void log_memory_operation(const char* operation, void* address, size_t size);
 
 int umeminit(size_t sizeOfRegion, int allocationAlgo) {
     int pageSize = getpagesize();
 
     //Round up sizeOfRegion to the nearest multiple of pageSize
-    sizeOfRegion = ((sizeOfRegion + pageSize - 1) / pageSize)*  pageSize;
+    sizeOfRegion = ((sizeOfRegion + pageSize - 1) / pageSize) * pageSize;
 
     //Check if memory region is already initialized
     if (memory_region != NULL) {
@@ -68,8 +73,7 @@ int umeminit(size_t sizeOfRegion, int allocationAlgo) {
 
     //Set free list head to the full block
     free_list = initial_free_block;
-
-    fprintf(stdout, "umeminit complete... Free block address: %p Free block size: %zu\n*********************************************************\n", initial_free_block, initial_free_block->size);
+    
     return 0;  //Success
 }
 
@@ -87,7 +91,7 @@ void* umalloc(size_t size) {
     }
 
     //Round up the requested size to the nearest multiple of 8
-    size = (size + 7) & ~7;  //Ensures size is a multiple of 8
+    size = (size + 7) & ~7;
 
     //Calculate the total required size with header alignment
     size_t allocation_size = size + sizeof(header_t);
@@ -127,7 +131,7 @@ void* umalloc(size_t size) {
 
         //Update the previous block's next pointer
         if (selected_prev == NULL) {
-            free_list = new_free_block;  //Update the free list head if the first block is used
+            free_list = new_free_block;
         } else {
             selected_prev->next = new_free_block;
         }
@@ -139,7 +143,7 @@ void* umalloc(size_t size) {
     } else {
         //Use the entire block if it's too small to split
         if (selected_prev == NULL) {
-            free_list = selected->next;  //Update the free list head if the first block is used
+            free_list = selected->next;
         } else {
             selected_prev->next = selected->next;
         }
@@ -161,11 +165,6 @@ void* umalloc(size_t size) {
     allocated_memory += size;
     total_allocations++;
 
-    //Debug output to track allocation
-    printf("\nAllocated address: %p\nOf Size: %zu\n[][][][][][][][][][][][][][][][][][]\n", allocated_memory_ptr, size);
-
-    print_free_list();
-
     //Return the memory address to the user (after the header)
     return allocated_memory_ptr;
 }
@@ -173,7 +172,6 @@ void* umalloc(size_t size) {
 
 void ufree(void* ptr) {
     if (ptr == NULL) {
-        //Do nothing if ptr is NULL
         return;
     }
 
@@ -225,63 +223,45 @@ void ufree(void* ptr) {
     //Call the coalesce function to merge adjacent free blocks
     coalesce(new_free_node);
 
-    //Debug output to track the free list
-    printf("\nAfter freeing address: %p\n", ptr);
-    print_free_list();
 }
 
-// Function to coalesce adjacent free blocks
+//Function to coalesce adjacent free blocks
 void coalesce(node_t* new_free_node) {
-    bool coalesced = false;
 
-    // Coalesce with next free block if adjacent
+
+    //Coalesce with next free block if adjacent
     if (new_free_node->next != NULL &&
-        (char *)new_free_node + new_free_node->size == (char *)new_free_node->next) {
-        printf("Coalescing with next block:\n");
-        printf("Current block: %p (size: %zu)\n", (void *)new_free_node, new_free_node->size);
-        printf("Next block: %p (size: %zu)\n", (void *)new_free_node->next, new_free_node->next->size);
+        (char* )new_free_node + new_free_node->size == (char* )new_free_node->next) {
 
         new_free_node->size += new_free_node->next->size;
         new_free_node->next = new_free_node->next->next;
-        coalesced = true;
     }
 
-    // Coalesce with previous free block if adjacent
+    //Coalesce with previous free block if adjacent
     node_t* prev = NULL;
     node_t* current = free_list;
 
-    // Find the previous block in the free list
+    //Find the previous block in the free list
     while (current != NULL && current < new_free_node) {
         prev = current;
         current = current->next;
     }
 
     if (prev != NULL &&
-        (char *)prev + prev->size == (char *)new_free_node) {
-        printf("Coalescing with previous block:\n");
-        printf("Previous block: %p (size: %zu)\n", (void *)prev, prev->size);
-        printf("Current block: %p (size: %zu)\n", (void *)new_free_node, new_free_node->size);
+        (char* )prev + prev->size == (char* )new_free_node) {
 
         prev->size += new_free_node->size;
         prev->next = new_free_node->next;
-        coalesced = true;
-    }
-
-    if (coalesced) {
-        printf("Coalescing occurred.\n");
-    } else {
-        printf("No coalescing occurred.\n");
     }
 }
 
 void* urealloc(void* ptr, size_t size) {
+    //If ptr is NULL, behave like umalloc
     if (ptr == NULL) {
-        //Case 1: If ptr is NULL, behave like umalloc
         return umalloc(size);
     }
-
+    //If size is 0, behave like ufree
     if (size == 0) {
-        //Case 2: If size is 0, behave like ufree
         ufree(ptr);
         return NULL;
     }
@@ -293,7 +273,7 @@ void* urealloc(void* ptr, size_t size) {
     //Round up the new requested size to the nearest multiple of 8 for alignment
     size = (size + 7) & ~7;
 
-    //Case 3: If the requested size is smaller than or equal to the current block, we can resize in place
+    //If the requested size is smaller than or equal to the current block, we can resize in place
     if (size <= current_size) {
         header->size = size;  //Simply update the header's size to the new requested size
         return ptr;
@@ -320,7 +300,7 @@ void* urealloc(void* ptr, size_t size) {
     }
 
     if (is_free && next_block->size >= allocation_size - current_size) {
-        //Case 4: Expand the block in place
+        //Expand the block
         if (next_block->size >= allocation_size - current_size + sizeof(node_t)) {
             //Split the next block if there's extra space
             node_t* new_free_block = (node_t* )((char* )next_block + allocation_size - current_size);
@@ -371,27 +351,19 @@ void* urealloc(void* ptr, size_t size) {
 }
 
 void umemstats(void){
-    double fragmentation = 0.0;  //Calculate fragmentation if relevant
+    double fragmentation = calculate_fragmentation();
 
     printumemstats(total_allocations, total_deallocations, allocated_memory, free_memory, fragmentation);
 }
 
-//Clean up memory when done (not part of API but useful for testing)
-void cleanup() {
-    if (memory_region) {
-        free(memory_region);
-        memory_region = NULL;
-    }
-}
-
 //First Fit algorithm: Find the first block that fits the requested size
-node_t* first_fit(size_t allocation_size, node_t* *selected_prev) {
+node_t* first_fit(size_t allocation_size, node_t** selected_prev) {
     node_t* prev = NULL;
     node_t* current = free_list;
 
     while (current != NULL) {
         if (current->size >= allocation_size) {
-           * selected_prev = prev;
+            *selected_prev = prev;
             return current;
         }
         prev = current;
@@ -401,17 +373,17 @@ node_t* first_fit(size_t allocation_size, node_t* *selected_prev) {
 }
 
 //Best Fit algorithm: Find the smallest block that fits the requested size
-node_t* best_fit(size_t allocation_size, node_t* *selected_prev) {
+node_t* best_fit(size_t allocation_size, node_t** selected_prev) {
     node_t* prev = NULL;
     node_t* current = free_list;
     node_t* best = NULL;
-   * selected_prev = NULL;
+    *selected_prev = NULL;
 
     while (current != NULL) {
         if (current->size >= allocation_size &&
             (best == NULL || current->size < best->size)) {
             best = current;
-           * selected_prev = prev;
+          *  selected_prev = prev;
         }
         prev = current;
         current = current->next;
@@ -420,17 +392,17 @@ node_t* best_fit(size_t allocation_size, node_t* *selected_prev) {
 }
 
 //Worst Fit algorithm: Find the largest block that fits the requested size
-node_t* worst_fit(size_t allocation_size, node_t* *selected_prev) {
+node_t* worst_fit(size_t allocation_size, node_t** selected_prev) {
     node_t* prev = NULL;
     node_t* current = free_list;
     node_t* worst = NULL;
-   * selected_prev = NULL;
+    *selected_prev = NULL;
 
     while (current != NULL) {
         if (current->size >= allocation_size &&
             (worst == NULL || current->size > worst->size)) {
             worst = current;
-           * selected_prev = prev;
+            *selected_prev = prev;
         }
         prev = current;
         current = current->next;
@@ -438,47 +410,46 @@ node_t* worst_fit(size_t allocation_size, node_t* *selected_prev) {
     return worst;
 }
 
-node_t* next_fit(size_t allocation_size, node_t* *selected_prev) {
+//Next Fit algorithm: Find the next block from the last allocated block
+node_t* next_fit(size_t allocation_size, node_t** selected_prev) {
     if (free_list == NULL) {
         return NULL;  //No free blocks available
     }
 
-    //Verify that last_allocated is still in the free list
-    node_t* temp = free_list;
     node_t* prev = NULL;
-    bool found = false;
-    while (temp != NULL) {
-        if (temp == last_allocated) {
-            found = true;
-            break;
-        }
-        prev = temp;
-        temp = temp->next;
-    }
-    if (!found) {
-        last_allocated = free_list;
+    node_t* current;
+
+    //Start the search from the node immediately after last_allocated, or from the head if last_allocated is NULL
+    if (last_allocated == NULL || last_allocated->next == NULL) {
+        current = free_list;
         prev = NULL;
     } else {
-        prev = (last_allocated == free_list) ? NULL : prev;
+        current = last_allocated->next;
+        prev = last_allocated;
     }
 
-    node_t* current = last_allocated;
+    //Keep a pointer to the start of our search to know when we've wrapped around
     node_t* start = current;
 
-    //Search the free list starting from last_allocated
+    //Search from current to the end of the free list, wrapping around if necessary
     do {
         if (current->size >= allocation_size) {
-           * selected_prev = prev;
+            //We found a suitable block, so set last_allocated and return
+            *selected_prev = prev;
+            last_allocated = current;
             return current;
         }
+
+        //Move to the next node
         prev = current;
-        current = current->next ? current->next : free_list;  //Wrap around to the start
+        current = current->next ? current->next : free_list;  //Wrap around if at the end
     } while (current != start);
 
     //No suitable block found
     return NULL;
 }
 
+//Debugger for checking the free list
 void print_free_list() {
     node_t* current = free_list;
     printf("Free list: ");
@@ -490,6 +461,43 @@ void print_free_list() {
         }
     }
     printf("\n");
+}
+
+double calculate_fragmentation(void) {
+    double fragmentation = 0.0;
+    size_t largest_free_block_size = 0;
+    size_t total_small_free_blocks = 0;
+    node_t* current = free_list;
+
+    //First pass: Find the largest free block size
+    while (current != NULL) {
+        if (current->size > largest_free_block_size) {
+            largest_free_block_size = current->size;
+        }
+        current = current->next;
+    }
+
+    //If there is no free memory, fragmentation is zero
+    if (largest_free_block_size == 0 || free_memory == 0) {
+        fragmentation = 0.0;
+    } else {
+        //Define threshold as half the size of the largest free block
+        size_t threshold = largest_free_block_size / 2;
+
+        //Second pass: Sum up memory in small free blocks
+        current = free_list;
+        while (current != NULL) {
+            if (current->size < threshold) {
+                total_small_free_blocks += current->size;
+            }
+            current = current->next;
+        }
+
+        //Calculate fragmentation percentage
+        fragmentation = ((double)total_small_free_blocks / (double)free_memory) * 100.0;
+    }
+
+    return fragmentation;
 }
 
 //Function to log memory operations for image generation
