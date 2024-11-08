@@ -32,7 +32,7 @@ typedef struct __node_t {
 int 	umeminit(size_t sizeOfRegion, int allocationAlgo);
 void 	*umalloc(size_t size);
 void    *urealloc(void *ptr, size_t size);
-int 	ufree(void *ptr);
+void 	ufree(void *ptr);
 void    umemstats(void);
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
